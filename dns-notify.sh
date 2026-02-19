@@ -265,7 +265,6 @@ done < "${TMPFILE}.ips"
 
 # Build lines from parsed data, filtering by allowed subdomains
 {
-    echo '```'
     echo "DNS | ${DOMAIN} | $(date '+%Y-%m-%d %H:%M')"
     echo ""
 
@@ -284,8 +283,6 @@ done < "${TMPFILE}.ips"
         lbl="${IP_LABELS[$src_ip]:-unknown}"
         echo "${display_name} | ${qtype} | ${src_ip} (${lbl}) | ${ts}"
     done < "${TMPFILE}.parsed"
-
-    echo '```'
 } > "$TMPFILE"
 
 # ── Send notification ───────────────────────────────────────────────
