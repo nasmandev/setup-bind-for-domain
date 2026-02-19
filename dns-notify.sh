@@ -45,6 +45,9 @@ done
 
 [[ -n "$DOMAIN" ]] || usage
 
+# Lowercase domain for consistent matching
+DOMAIN="${DOMAIN,,}"
+
 # ── Verify dependencies ────────────────────────────────────────────
 
 # Ensure PATH includes common install locations (cron has a minimal PATH)
@@ -109,27 +112,79 @@ if [[ -f "$BLACKLIST" ]]; then
     # Build grep pattern from blacklist (lines that aren't comments or empty)
     # Matches exact subdomain names since .subs file contains only subdomain parts
     BLACKLIST_PATTERN=$(grep -v '^\s*#' "$BLACKLIST" | grep -v '^\s*$' | \
+        tr '[:upper:]' '[:lower:]' | \
+        sed 's/[.*+?^${}()|[\]\\]/\\&/g' | \
         sed 's/^/^/' | sed 's/$/$/' | paste -sd'|' - 2>/dev/null || true)
 fi
 
-# ── Filter and deduplicate ──────────────────────────────────────────
-
-ESCAPED_DOMAIN="${DOMAIN//./\\.}"
+# ── Parse queries ──────────────────────────────────────────────────
+# Extract structured data: fqdn, query type, source IP
 
 TMPFILE=$(mktemp)
-trap 'rm -f "$TMPFILE"' EXIT
+trap 'rm -f "$TMPFILE" "${TMPFILE}".*' EXIT
 
+# Parse each matching log line into: subdomain|type|source_ip
 echo "$NEW_LINES" | \
     grep -i "${DOMAIN}" | \
-    grep -oP "query: \K\S+" | \
-    sed 's/\.$//' | \
-    grep -iE "\.${ESCAPED_DOMAIN}$|^${ESCAPED_DOMAIN}$" | \
-    while IFS= read -r fqdn; do
-        # Extract subdomain part
-        sub="${fqdn%."${DOMAIN}"}"
-        [[ "$sub" == "${DOMAIN}" ]] && sub="@"
-        echo "$sub"
-    done | sort -u > "${TMPFILE}.subs"
+    grep -i "query:" | \
+    awk -v domain="$DOMAIN" '
+    {
+        # Extract source IP: "client @0xHEX IP#PORT" or "client IP#PORT"
+        src_ip = ""
+        for (i = 1; i <= NF; i++) {
+            if ($i == "client") {
+                candidate = $(i+1)
+                # Skip optional @0x... token
+                if (candidate ~ /^@0x/) candidate = $(i+2)
+                # Strip #port
+                sub(/#.*/, "", candidate)
+                if (candidate ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
+                    src_ip = candidate
+                break
+            }
+        }
+
+        # Extract FQDN and query type: "query: FQDN IN TYPE"
+        fqdn = ""; qtype = ""
+        for (i = 1; i <= NF; i++) {
+            if ($i == "query:" || $i ~ /^query:$/) {
+                fqdn = $(i+1)
+                # $(i+2) should be "IN", $(i+3) is the type
+                if ($(i+2) == "IN") qtype = $(i+3)
+                break
+            }
+        }
+
+        if (fqdn == "" || src_ip == "") next
+
+        # Strip trailing dot and lowercase
+        sub(/\.$/, "", fqdn)
+        fqdn = tolower(fqdn)
+
+        # Check if fqdn matches domain
+        if (fqdn == domain) {
+            sub = "@"
+        } else {
+            suffix = "." domain
+            slen = length(suffix)
+            if (length(fqdn) > slen && substr(fqdn, length(fqdn) - slen + 1) == suffix) {
+                sub = substr(fqdn, 1, length(fqdn) - slen)
+            } else {
+                next
+            }
+        }
+
+        print sub "|" qtype "|" src_ip
+    }
+    ' > "${TMPFILE}.parsed"
+
+# Nothing matched
+if [[ ! -s "${TMPFILE}.parsed" ]]; then
+    exit 0
+fi
+
+# Get unique subdomains
+awk -F'|' '{print $1}' "${TMPFILE}.parsed" | sort -u > "${TMPFILE}.subs"
 
 # Apply blacklist filter
 if [[ -n "$BLACKLIST_PATTERN" ]]; then
@@ -138,43 +193,105 @@ else
     cp "${TMPFILE}.subs" "${TMPFILE}.filtered"
 fi
 
-# Also extract source IPs for dedup: subdomain+IP pairs
-echo "$NEW_LINES" | \
-    grep -i "${DOMAIN}" | \
-    grep -oP "client\s+(@0x[a-f0-9]+\s+)?\K[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+" | \
-    paste - <(echo "$NEW_LINES" | \
-        grep -i "${DOMAIN}" | \
-        grep -oP "query: \K\S+" | \
-        sed 's/\.$//' \
-    ) 2>/dev/null | \
-    sort -u > "${TMPFILE}.pairs" 2>/dev/null || true
-
-# Count unique source IPs per subdomain for summary
 QUERY_COUNT=$(wc -l < "${TMPFILE}.filtered" | tr -d ' ')
 
 if [[ "$QUERY_COUNT" -eq 0 ]]; then
-    rm -f "${TMPFILE}.subs" "${TMPFILE}.filtered" "${TMPFILE}.pairs"
     exit 0
 fi
+
+# ── Classify source IPs ────────────────────────────────────────────
+
+# Get unique source IPs and do reverse DNS lookups
+awk -F'|' '{print $3}' "${TMPFILE}.parsed" | sort -u > "${TMPFILE}.ips"
+
+declare -A IP_LABELS
+while IFS= read -r ip; do
+    ptr=$(dig +short -x "$ip" 2>/dev/null | head -1 | sed 's/\.$//' || true)
+    ptr_lower="${ptr,,}"
+    label=""
+
+    if [[ -z "$ptr" ]]; then
+        label="unknown"
+    elif [[ "$ptr_lower" =~ googlebot|google\.com$ ]]; then
+        label="Google"
+    elif [[ "$ptr_lower" =~ bing\.com$|bingbot|msn\.com$ ]]; then
+        label="Bing"
+    elif [[ "$ptr_lower" =~ yahoo\.(com|net)$|yahoodns ]]; then
+        label="Yahoo"
+    elif [[ "$ptr_lower" =~ yandex\.(ru|net|com)$ ]]; then
+        label="Yandex"
+    elif [[ "$ptr_lower" =~ baidu\.(com|jp)$ ]]; then
+        label="Baidu"
+    elif [[ "$ptr_lower" =~ crawl|spider|bot|scraper ]]; then
+        label="bot"
+    elif [[ "$ptr_lower" =~ cloudflare|cloudflare-dns ]]; then
+        label="Cloudflare"
+    elif [[ "$ptr_lower" =~ akamai ]]; then
+        label="Akamai"
+    elif [[ "$ptr_lower" =~ amazon|aws|ec2|compute\.amazonaws ]]; then
+        label="AWS"
+    elif [[ "$ptr_lower" =~ azure|microsoft|msft|\.cloud\.microsoft ]]; then
+        label="Azure"
+    elif [[ "$ptr_lower" =~ google|\.goog$|googleusercontent ]]; then
+        label="GCP"
+    elif [[ "$ptr_lower" =~ digitalocean ]]; then
+        label="DigitalOcean"
+    elif [[ "$ptr_lower" =~ linode|akamai ]]; then
+        label="Linode/Akamai"
+    elif [[ "$ptr_lower" =~ hetzner|your-server\.de ]]; then
+        label="Hetzner"
+    elif [[ "$ptr_lower" =~ ovh\.net$|ovh\.com$ ]]; then
+        label="OVH"
+    elif [[ "$ptr_lower" =~ shodan ]]; then
+        label="Shodan"
+    elif [[ "$ptr_lower" =~ censys ]]; then
+        label="Censys"
+    elif [[ "$ptr_lower" =~ internetmeasurement|measurement ]]; then
+        label="scanner"
+    else
+        label="$ptr"
+    fi
+
+    IP_LABELS["$ip"]="$label"
+done < "${TMPFILE}.ips"
 
 # ── Build notification message ──────────────────────────────────────
 
 {
-    echo "DNS Queries for ${DOMAIN} ($(date '+%Y-%m-%d %H:%M')):"
-    echo "---"
+    echo '```'
+    echo "DNS queries for ${DOMAIN}"
+    echo "$(date '+%Y-%m-%d %H:%M') | ${QUERY_COUNT} unique subdomain(s)"
+    echo ""
+
     while IFS= read -r sub; do
         [[ -z "$sub" ]] && continue
+
         if [[ "$sub" == "@" ]]; then
-            query_fqdn="${DOMAIN}"
+            display_name="${DOMAIN}"
         else
-            query_fqdn="${sub}.${DOMAIN}"
+            display_name="${sub}.${DOMAIN}"
         fi
-        # Count unique source IPs for this subdomain from the pairs file
-        ip_count=$(grep -c "${query_fqdn}$" "${TMPFILE}.pairs" 2>/dev/null || echo "?")
-        echo "  ${query_fqdn} (${ip_count} source(s))"
+
+        # Get query types for this subdomain
+        types=$(awk -F'|' -v s="$sub" '$1 == s {print $2}' "${TMPFILE}.parsed" | sort -u | paste -sd',' -)
+
+        # Get unique source IPs with labels
+        sources=""
+        while IFS= read -r ip; do
+            lbl="${IP_LABELS[$ip]:-unknown}"
+            if [[ -z "$sources" ]]; then
+                sources="${ip} (${lbl})"
+            else
+                sources="${sources}, ${ip} (${lbl})"
+            fi
+        done < <(awk -F'|' -v s="$sub" '$1 == s {print $3}' "${TMPFILE}.parsed" | sort -u)
+
+        echo "${display_name}"
+        echo "  ${types} | ${sources}"
+        echo ""
     done < "${TMPFILE}.filtered"
-    echo "---"
-    echo "Total unique subdomains: ${QUERY_COUNT}"
+
+    echo '```'
 } > "$TMPFILE"
 
 # ── Send notification ───────────────────────────────────────────────
@@ -185,6 +302,3 @@ if [[ -n "$PROVIDER_ID" ]]; then
 fi
 
 notify "${NOTIFY_ARGS[@]}"
-
-# Cleanup handled by trap
-rm -f "${TMPFILE}.subs" "${TMPFILE}.filtered" "${TMPFILE}.pairs"
