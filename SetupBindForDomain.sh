@@ -200,8 +200,20 @@ if [[ "${SETUP_NOTIFY,,}" == "y" ]]; then
         info "notify is already installed."
     fi
 
-    # Install provider config
-    NOTIFY_CONFIG_DIR="$HOME/.config/notify"
+    # Ask which user should run the cron job and own the notification config
+    SUDO_USER="${SUDO_USER:-}"
+    if [[ -n "$SUDO_USER" ]]; then
+        DEFAULT_CRON_USER="$SUDO_USER"
+    else
+        DEFAULT_CRON_USER="root"
+    fi
+    read -rp "Which user should run dns-notify? [${DEFAULT_CRON_USER}] " CRON_USER
+    CRON_USER="${CRON_USER:-$DEFAULT_CRON_USER}"
+
+    CRON_USER_HOME=$(eval echo "~${CRON_USER}")
+
+    # Install provider config for the chosen user
+    NOTIFY_CONFIG_DIR="${CRON_USER_HOME}/.config/notify"
     NOTIFY_CONFIG="${NOTIFY_CONFIG_DIR}/provider-config.yaml"
     if [[ ! -f "$NOTIFY_CONFIG" ]]; then
         if [[ -f "${SCRIPT_DIR}/provider-config.yaml.example" ]]; then
@@ -209,6 +221,7 @@ if [[ "${SETUP_NOTIFY,,}" == "y" ]]; then
             if [[ "${INSTALL_CONFIG,,}" != "n" ]]; then
                 mkdir -p "$NOTIFY_CONFIG_DIR"
                 cp "${SCRIPT_DIR}/provider-config.yaml.example" "$NOTIFY_CONFIG"
+                chown -R "${CRON_USER}" "$NOTIFY_CONFIG_DIR"
                 info "Installed provider config to ${NOTIFY_CONFIG}"
                 info "Edit the file and uncomment/configure your preferred provider(s)."
             fi
@@ -228,17 +241,25 @@ if [[ "${SETUP_NOTIFY,,}" == "y" ]]; then
         info "Blacklist already exists at /etc/dns-notify/blacklist.txt — skipping."
     fi
 
-    # Create state directory
+    # Create state directory with correct ownership
     mkdir -p /var/lib/dns-notify
+    chown "${CRON_USER}" /var/lib/dns-notify
 
-    # Install cron job
+    # Grant the cron user read access to the query log
+    if [[ "$CRON_USER" != "root" ]]; then
+        usermod -aG bind "$CRON_USER" 2>/dev/null || true
+        chmod g+r /var/log/named/query.log 2>/dev/null || true
+        info "Added ${CRON_USER} to bind group for query log access."
+    fi
+
+    # Install cron job for the chosen user
     if [[ -f "$NOTIFY_SCRIPT" ]]; then
         CRON_LINE="*/5 * * * * ${NOTIFY_SCRIPT} -d ${DOMAIN}"
-        if crontab -l 2>/dev/null | grep -qF "dns-notify.sh"; then
-            info "Cron job for dns-notify.sh already exists — skipping."
+        if crontab -u "$CRON_USER" -l 2>/dev/null | grep -qF "dns-notify.sh"; then
+            info "Cron job for dns-notify.sh already exists for ${CRON_USER} — skipping."
         else
-            (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
-            info "Installed cron job: ${CRON_LINE}"
+            (crontab -u "$CRON_USER" -l 2>/dev/null; echo "$CRON_LINE") | crontab -u "$CRON_USER" -
+            info "Installed cron job for ${CRON_USER}: ${CRON_LINE}"
         fi
     else
         info "WARNING: dns-notify.sh not found at ${NOTIFY_SCRIPT}"
@@ -249,6 +270,6 @@ if [[ "${SETUP_NOTIFY,,}" == "y" ]]; then
     info ""
     info "Notification setup complete."
     info "Edit /etc/dns-notify/blacklist.txt to filter noisy subdomains."
-    info "Configure your notification provider in ~/.config/notify/provider-config.yaml"
+    info "Configure your notification provider in ${NOTIFY_CONFIG}"
     info "See provider-config.yaml.example for Slack, Discord, Telegram, Teams, Email, and more."
 fi
