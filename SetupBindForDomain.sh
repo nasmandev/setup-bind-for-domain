@@ -166,12 +166,38 @@ echo ""
 read -rp "Set up batched DNS query notifications via projectdiscovery/notify? [y/N] " SETUP_NOTIFY
 
 if [[ "${SETUP_NOTIFY,,}" == "y" ]]; then
-    # Check for notify
+    # Install Go if needed
+    if ! command -v go &>/dev/null; then
+        info "Go is not installed — installing …"
+        GO_VERSION=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
+        GO_ARCH=$(dpkg --print-architecture)
+        GO_TAR="${GO_VERSION}.linux-${GO_ARCH}.tar.gz"
+        curl -fsSL "https://go.dev/dl/${GO_TAR}" -o "/tmp/${GO_TAR}"
+        rm -rf /usr/local/go
+        tar -C /usr/local -xzf "/tmp/${GO_TAR}"
+        rm -f "/tmp/${GO_TAR}"
+        export PATH="/usr/local/go/bin:${PATH}"
+        # Make Go available for all users
+        if ! grep -q '/usr/local/go/bin' /etc/profile.d/go.sh 2>/dev/null; then
+            # shellcheck disable=SC2016
+            echo 'export PATH="/usr/local/go/bin:${PATH}"' > /etc/profile.d/go.sh
+        fi
+        info "Installed Go $(go version | awk '{print $3}')"
+    else
+        info "Go is already installed ($(go version | awk '{print $3}'))."
+    fi
+
+    # Install notify if needed
     if ! command -v notify &>/dev/null; then
-        info "WARNING: 'notify' is not installed."
-        info "Install it with: go install -v github.com/projectdiscovery/notify/cmd/notify@latest"
-        info "Then configure ~/.config/notify/provider-config.yaml (see provider-config.yaml.example)"
-        info ""
+        info "notify is not installed — installing …"
+        export GOPATH="${GOPATH:-/usr/local/go-tools}"
+        export GOBIN="${GOPATH}/bin"
+        go install -v github.com/projectdiscovery/notify/cmd/notify@latest
+        # Symlink into PATH so it's available system-wide
+        ln -sf "${GOBIN}/notify" /usr/local/bin/notify
+        info "Installed notify to /usr/local/bin/notify"
+    else
+        info "notify is already installed."
     fi
 
     # Install blacklist

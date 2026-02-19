@@ -47,9 +47,13 @@ done
 
 # ── Verify dependencies ────────────────────────────────────────────
 
+# Ensure PATH includes common install locations (cron has a minimal PATH)
+export PATH="/usr/local/bin:/usr/local/go/bin:/usr/local/go-tools/bin:${PATH}"
+
 if ! command -v notify &>/dev/null; then
     echo "ERROR: 'notify' (projectdiscovery/notify) is not installed." >&2
-    echo "Install: go install -v github.com/projectdiscovery/notify/cmd/notify@latest" >&2
+    echo "Run SetupBindForDomain.sh to install it, or manually:" >&2
+    echo "  go install -v github.com/projectdiscovery/notify/cmd/notify@latest" >&2
     exit 1
 fi
 
