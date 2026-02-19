@@ -62,6 +62,12 @@ fi
 mkdir -p "$STATE_DIR"
 STATE_FILE="${STATE_DIR}/offset.state"
 
+# Ensure state file is writable
+if [[ -f "$STATE_FILE" ]] && [[ ! -w "$STATE_FILE" ]]; then
+    echo "ERROR: Cannot write to ${STATE_FILE} — check permissions." >&2
+    exit 1
+fi
+
 # Read saved state (inode and byte offset)
 SAVED_INODE=0
 SAVED_OFFSET=0
@@ -116,13 +122,12 @@ trap 'rm -f "$TMPFILE"' EXIT
 echo "$NEW_LINES" | \
     grep -i "${DOMAIN}" | \
     grep -oP "query: \K\S+" | \
-    grep -iE "\.${ESCAPED_DOMAIN}\.$|^${ESCAPED_DOMAIN}\.$" | \
+    sed 's/\.$//' | \
+    grep -iE "\.${ESCAPED_DOMAIN}$|^${ESCAPED_DOMAIN}$" | \
     while IFS= read -r fqdn; do
-        # Strip trailing dot
-        fqdn="${fqdn%.}"
         # Extract subdomain part
         sub="${fqdn%."${DOMAIN}"}"
-        [[ "$sub" == "$DOMAIN" ]] && sub="@"
+        [[ "$sub" == "${DOMAIN}" ]] && sub="@"
         echo "$sub"
     done | sort -u > "${TMPFILE}.subs"
 
