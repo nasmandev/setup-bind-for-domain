@@ -123,20 +123,22 @@ fi
 TMPFILE=$(mktemp)
 trap 'rm -f "$TMPFILE" "${TMPFILE}".*' EXIT
 
-# Parse each matching log line into: subdomain|type|source_ip
+# Parse each matching log line into: subdomain|type|source_ip|time
 echo "$NEW_LINES" | \
     grep -i "${DOMAIN}" | \
     grep -i "query:" | \
     awk -v domain="$DOMAIN" '
     {
+        # Extract timestamp (field 2: HH:MM:SS.ms → keep HH:MM)
+        ts = $2
+        sub(/:[0-9]+\.[0-9]+$/, "", ts)
+
         # Extract source IP: "client @0xHEX IP#PORT" or "client IP#PORT"
         src_ip = ""
         for (i = 1; i <= NF; i++) {
             if ($i == "client") {
                 candidate = $(i+1)
-                # Skip optional @0x... token
                 if (candidate ~ /^@0x/) candidate = $(i+2)
-                # Strip #port
                 sub(/#.*/, "", candidate)
                 if (candidate ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
                     src_ip = candidate
@@ -149,7 +151,6 @@ echo "$NEW_LINES" | \
         for (i = 1; i <= NF; i++) {
             if ($i == "query:" || $i ~ /^query:$/) {
                 fqdn = $(i+1)
-                # $(i+2) should be "IN", $(i+3) is the type
                 if ($(i+2) == "IN") qtype = $(i+3)
                 break
             }
@@ -174,7 +175,12 @@ echo "$NEW_LINES" | \
             }
         }
 
-        print sname "|" qtype "|" src_ip
+        # Deduplicate: only print first occurrence of each subdomain|type|ip
+        key = sname "|" qtype "|" src_ip
+        if (!(key in seen)) {
+            seen[key] = 1
+            print sname "|" qtype "|" src_ip "|" ts
+        }
     }
     ' > "${TMPFILE}.parsed"
 
@@ -257,39 +263,27 @@ done < "${TMPFILE}.ips"
 
 # ── Build notification message ──────────────────────────────────────
 
+# Build lines from parsed data, filtering by allowed subdomains
 {
     echo '```'
-    echo "DNS queries for ${DOMAIN}"
-    echo "$(date '+%Y-%m-%d %H:%M') | ${QUERY_COUNT} unique subdomain(s)"
+    echo "DNS | ${DOMAIN} | $(date '+%Y-%m-%d %H:%M')"
     echo ""
 
-    while IFS= read -r sub; do
-        [[ -z "$sub" ]] && continue
-
-        if [[ "$sub" == "@" ]]; then
-            display_name="${DOMAIN}"
-        else
-            display_name="${sub}.${DOMAIN}"
+    while IFS='|' read -r sname qtype src_ip ts; do
+        # Check if subdomain is in filtered list
+        if ! grep -qxF "$sname" "${TMPFILE}.filtered" 2>/dev/null; then
+            continue
         fi
 
-        # Get query types for this subdomain
-        types=$(awk -F'|' -v s="$sub" '$1 == s {print $2}' "${TMPFILE}.parsed" | sort -u | paste -sd',' -)
+        if [[ "$sname" == "@" ]]; then
+            display_name="${DOMAIN}"
+        else
+            display_name="${sname}.${DOMAIN}"
+        fi
 
-        # Get unique source IPs with labels
-        sources=""
-        while IFS= read -r ip; do
-            lbl="${IP_LABELS[$ip]:-unknown}"
-            if [[ -z "$sources" ]]; then
-                sources="${ip} (${lbl})"
-            else
-                sources="${sources}, ${ip} (${lbl})"
-            fi
-        done < <(awk -F'|' -v s="$sub" '$1 == s {print $3}' "${TMPFILE}.parsed" | sort -u)
-
-        echo "${display_name}"
-        echo "  ${types} | ${sources}"
-        echo ""
-    done < "${TMPFILE}.filtered"
+        lbl="${IP_LABELS[$src_ip]:-unknown}"
+        echo "${display_name} | ${qtype} | ${src_ip} (${lbl}) | ${ts}"
+    done < "${TMPFILE}.parsed"
 
     echo '```'
 } > "$TMPFILE"

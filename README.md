@@ -178,11 +178,33 @@ See `blacklist.txt.example` for a starter list.
 ### Example notification output
 
 ```
-DNS Queries for example.com (2026-02-19 14:25):
----
-  ssrf-probe.example.com (1 source(s))
-  xxe-test.example.com (3 source(s))
-  callback.example.com (1 source(s))
----
-Total unique subdomains: 3
+DNS | example.com | 2026-02-19 14:25
+
+ssrf-probe.example.com | A | 198.51.100.5 (unknown) | 14:23
+xxe-test.example.com | A | 74.63.22.234 (Hetzner) | 14:24
+xxe-test.example.com | AAAA | 74.63.22.234 (Hetzner) | 14:24
+xxe-test.example.com | A | 51.12.224.79 (Azure) | 14:24
+callback.example.com | HTTPS | 172.71.5.101 (Cloudflare) | 14:25
+```
+
+Each line represents a unique combination of subdomain, query type, and source IP. Sources are classified via reverse DNS lookup (Google, Bing, AWS, Azure, Cloudflare, Shodan, Hetzner, etc.).
+
+### Troubleshooting
+
+To reprocess the entire query log (e.g. after fixing a configuration issue), reset the state file:
+
+```bash
+echo -e "0\n0" > /var/lib/dns-notify/offset.state
+```
+
+To test manually:
+
+```bash
+bash -x dns-notify.sh -d example.com
+```
+
+If the state file has wrong permissions (e.g. owned by root when cron runs as your user):
+
+```bash
+sudo chown $USER /var/lib/dns-notify/offset.state
 ```
