@@ -142,14 +142,14 @@ go install -v github.com/projectdiscovery/notify/cmd/notify@latest
 
 ### Configuring a provider
 
-1. Copy the example config:
+The setup script will offer to copy the example config automatically. To do it manually:
 
 ```bash
 mkdir -p ~/.config/notify
 cp provider-config.yaml.example ~/.config/notify/provider-config.yaml
 ```
 
-2. Edit `~/.config/notify/provider-config.yaml` — uncomment the provider(s) you want and fill in your credentials. See `provider-config.yaml.example` for all options and setup links.
+Then edit `~/.config/notify/provider-config.yaml` — uncomment the provider(s) you want and fill in your credentials. See `provider-config.yaml.example` for all options and setup links.
 
 ### Cron setup
 

@@ -200,6 +200,23 @@ if [[ "${SETUP_NOTIFY,,}" == "y" ]]; then
         info "notify is already installed."
     fi
 
+    # Install provider config
+    NOTIFY_CONFIG_DIR="$HOME/.config/notify"
+    NOTIFY_CONFIG="${NOTIFY_CONFIG_DIR}/provider-config.yaml"
+    if [[ ! -f "$NOTIFY_CONFIG" ]]; then
+        if [[ -f "${SCRIPT_DIR}/provider-config.yaml.example" ]]; then
+            read -rp "Install notify provider config to ${NOTIFY_CONFIG}? [Y/n] " INSTALL_CONFIG
+            if [[ "${INSTALL_CONFIG,,}" != "n" ]]; then
+                mkdir -p "$NOTIFY_CONFIG_DIR"
+                cp "${SCRIPT_DIR}/provider-config.yaml.example" "$NOTIFY_CONFIG"
+                info "Installed provider config to ${NOTIFY_CONFIG}"
+                info "Edit the file and uncomment/configure your preferred provider(s)."
+            fi
+        fi
+    else
+        info "Provider config already exists at ${NOTIFY_CONFIG} — skipping."
+    fi
+
     # Install blacklist
     mkdir -p /etc/dns-notify
     if [[ ! -f /etc/dns-notify/blacklist.txt ]]; then
