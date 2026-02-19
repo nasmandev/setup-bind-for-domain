@@ -163,18 +163,18 @@ echo "$NEW_LINES" | \
 
         # Check if fqdn matches domain
         if (fqdn == domain) {
-            sub = "@"
+            sname = "@"
         } else {
             suffix = "." domain
             slen = length(suffix)
             if (length(fqdn) > slen && substr(fqdn, length(fqdn) - slen + 1) == suffix) {
-                sub = substr(fqdn, 1, length(fqdn) - slen)
+                sname = substr(fqdn, 1, length(fqdn) - slen)
             } else {
                 next
             }
         }
 
-        print sub "|" qtype "|" src_ip
+        print sname "|" qtype "|" src_ip
     }
     ' > "${TMPFILE}.parsed"
 

@@ -167,6 +167,7 @@ read -rp "Set up batched DNS query notifications via projectdiscovery/notify? [y
 
 if [[ "${SETUP_NOTIFY,,}" == "y" ]]; then
     # Install Go if needed
+    export PATH="/usr/local/go/bin:${PATH}"
     if ! command -v go &>/dev/null; then
         info "Go is not installed — installing …"
         GO_VERSION=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
