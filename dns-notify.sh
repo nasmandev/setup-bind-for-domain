@@ -162,10 +162,10 @@ echo "$NEW_LINES" | \
         sub(/\.$/, "", fqdn)
         fqdn = tolower(fqdn)
 
-        # Check if fqdn matches domain
-        if (fqdn == domain) {
-            sname = "@"
-        } else {
+        # Skip queries for the bare domain — only notify on subdomains
+        if (fqdn == domain) next
+
+        {
             suffix = "." domain
             slen = length(suffix)
             if (length(fqdn) > slen && substr(fqdn, length(fqdn) - slen + 1) == suffix) {
@@ -274,11 +274,7 @@ done < "${TMPFILE}.ips"
             continue
         fi
 
-        if [[ "$sname" == "@" ]]; then
-            display_name="${DOMAIN}"
-        else
-            display_name="${sname}.${DOMAIN}"
-        fi
+        display_name="${sname}.${DOMAIN}"
 
         lbl="${IP_LABELS[$src_ip]:-unknown}"
         echo "${display_name} | ${qtype} | ${src_ip} (${lbl}) | ${ts}"
