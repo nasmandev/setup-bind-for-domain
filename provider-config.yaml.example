@@ -1,0 +1,110 @@
+# projectdiscovery/notify — provider configuration
+#
+# Uncomment and configure the providers you want to use.
+# You can enable multiple providers simultaneously.
+#
+# Copy this file to ~/.config/notify/provider-config.yaml:
+#   mkdir -p ~/.config/notify
+#   cp provider-config.yaml.example ~/.config/notify/provider-config.yaml
+#
+# Use -id <id> with dns-notify.sh to target a specific provider,
+# or omit it to send to all configured providers.
+
+# ── Slack ────────────────────────────────────────────────────────────
+# Create a webhook: https://api.slack.com/messaging/webhooks
+
+#slack:
+#  - id: "slack"
+#    slack_channel: "dns-alerts"
+#    slack_username: "DNS Notify"
+#    slack_format: "{{data}}"
+#    slack_webhook_url: "https://hooks.slack.com/services/TXXXXXX/BXXXXXX/token-here"
+
+# ── Discord ──────────────────────────────────────────────────────────
+# Create a webhook: Server Settings → Integrations → Webhooks
+
+#discord:
+#  - id: "discord"
+#    discord_channel: "dns-alerts"
+#    discord_username: "DNS Notify"
+#    discord_format: "{{data}}"
+#    discord_webhook_url: "https://discord.com/api/webhooks/XXXXXXXX/XXXXXXXX"
+
+# ── Telegram ─────────────────────────────────────────────────────────
+# Create a bot via @BotFather, get chat ID via @userinfobot
+
+#telegram:
+#  - id: "telegram"
+#    telegram_api_key: "123456789:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+#    telegram_chat_id: "-100XXXXXXXXXX"
+#    telegram_format: "{{data}}"
+#    telegram_parsemode: "Markdown"
+
+# ── Microsoft Teams ──────────────────────────────────────────────────
+# Create an Incoming Webhook connector in a Teams channel
+
+#teams:
+#  - id: "teams"
+#    teams_webhook_url: "https://outlook.office.com/webhook/XXXXXXXX"
+#    teams_format: "{{data}}"
+
+# ── Google Chat ──────────────────────────────────────────────────────
+# Create a webhook in a Google Chat space
+
+#googlechat:
+#  - id: "googlechat"
+#    key: "XXXXXXXX"
+#    token: "XXXXXXXX"
+#    space: "XXXXXXXX"
+#    google_chat_format: "{{data}}"
+
+# ── Email (SMTP) ────────────────────────────────────────────────────
+# Use any SMTP server (Gmail, Mailgun, self-hosted, etc.)
+
+#smtp:
+#  - id: "email"
+#    smtp_server: "smtp.gmail.com"
+#    smtp_username: "user@gmail.com"
+#    smtp_password: "app-password-here"
+#    from_address: "user@gmail.com"
+#    smtp_cc:
+#      - "recipient@example.com"
+#    subject: "DNS Query Alert"
+#    smtp_format: "{{data}}"
+#    smtp_html: false
+#    smtp_disable_starttls: false
+
+# ── Pushover ─────────────────────────────────────────────────────────
+# Register at https://pushover.net — great for mobile push notifications
+
+#pushover:
+#  - id: "pushover"
+#    pushover_user_key: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+#    pushover_api_token: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+#    pushover_format: "{{data}}"
+#    pushover_devices:
+#      - "iphone"
+
+# ── Gotify ───────────────────────────────────────────────────────────
+# Self-hosted push notification server: https://gotify.net
+
+#gotify:
+#  - id: "gotify"
+#    gotify_host: "push.example.com"
+#    gotify_port: "443"
+#    gotify_token: "XXXXXXXXXXXXXXX"
+#    gotify_format: "{{data}}"
+#    gotify_disabletls: false
+#    gotify_title: "DNS Query Alert"
+
+# ── Custom Webhook ───────────────────────────────────────────────────
+# Send to any HTTP endpoint (SIEM, n8n, Zapier, etc.)
+
+#custom:
+#  - id: "custom"
+#    custom_webhook_url: "https://example.com/api/webhook"
+#    custom_method: "POST"
+#    custom_format: "{{data}}"
+#    custom_headers:
+#      Content-Type: "application/json"
+#      X-Api-Key: "XXXXX"

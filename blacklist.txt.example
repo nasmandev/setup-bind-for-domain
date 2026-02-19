@@ -1,0 +1,22 @@
+# Subdomains to exclude from notifications.
+# One per line. Lines starting with # are comments.
+# These are common subdomains that scanners/bots probe automatically
+# and typically produce noise rather than useful signal.
+
+www
+mail
+smtp
+imap
+pop
+pop3
+ftp
+webmail
+cpanel
+whm
+cpcalendars
+cpcontacts
+webdisk
+autodiscover
+autoconfig
+_dmarc
+_domainkey
