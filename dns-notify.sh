@@ -110,11 +110,25 @@ echo "$FILE_SIZE" >> "$STATE_FILE"
 BLACKLIST_PATTERN=""
 if [[ -f "$BLACKLIST" ]]; then
     # Build grep pattern from blacklist (lines that aren't comments or empty)
-    # Matches exact subdomain names since .subs file contains only subdomain parts
+    # Plain entries match exactly (^subdomain$)
+    # Entries starting with . match as suffix (e.g. .ssrf.fyi matches anything ending in .ssrf.fyi)
+    # Entries ending with . match as prefix (e.g. *. matches *.ssrf.fyi, *.anything)
     BLACKLIST_PATTERN=$(grep -v '^\s*#' "$BLACKLIST" | grep -v '^\s*$' | \
-        tr '[:upper:]' '[:lower:]' | \
-        sed 's/[.*+?^${}()|[\]\\]/\\&/g' | \
-        sed 's/^/^/' | sed 's/$/$/' | paste -sd'|' - 2>/dev/null || true)
+        tr '[:upper:]' '[:lower:]' | while IFS= read -r line; do
+            if [[ "$line" == .* ]]; then
+                # Suffix match: escape and anchor to end
+                escaped=$(printf '%s' "$line" | sed 's/[.*+?^${}()|[\]\\]/\\&/g')
+                printf '%s\n' "${escaped}$"
+            elif [[ "$line" == *. ]]; then
+                # Prefix match: escape and anchor to start
+                escaped=$(printf '%s' "$line" | sed 's/[.*+?^${}()|[\]\\]/\\&/g')
+                printf '%s\n' "^${escaped}"
+            else
+                # Exact match: escape and anchor both ends
+                escaped=$(printf '%s' "$line" | sed 's/[.*+?^${}()|[\]\\]/\\&/g')
+                printf '%s\n' "^${escaped}$"
+            fi
+        done | paste -sd'|' - 2>/dev/null || true)
 fi
 
 # ── Parse queries ──────────────────────────────────────────────────

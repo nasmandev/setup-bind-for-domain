@@ -171,7 +171,7 @@ The setup script can install the cron job automatically (it will prompt you). To
 
 ### Blacklist configuration
 
-Edit `/etc/dns-notify/blacklist.txt` to suppress notifications for noisy subdomains (e.g. `www`, `mail`, `autodiscover`) that scanners probe automatically. One subdomain per line; lines starting with `#` are comments.
+Edit `/etc/dns-notify/blacklist.txt` to suppress notifications for noisy subdomains (e.g. `www`, `mail`, `autodiscover`) that scanners probe automatically. One subdomain per line; lines starting with `#` are comments. Entries starting with `.` match as a suffix (e.g. `.ssrf.fyi` blocks `abc.ssrf.fyi`). Entries ending with `.` match as a prefix (e.g. `*.` blocks `*.ssrf.fyi`, `*.anything`).
 
 See `blacklist.txt.example` for a starter list.
 
